@@ -12,7 +12,7 @@ Build from source with Go:
 go build -o screenjson-db-importer .
 ```
 
-Or use the container image:
+After publishing the image to GHCR, pull and run it:
 
 ```sh
 docker pull ghcr.io/screenjson/screenjson-db-importer:latest
