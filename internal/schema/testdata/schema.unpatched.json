@@ -1,0 +1,987 @@
+{
+  "$schema": "https://screenjson.com/draft/2026-01/schema",
+  "$id": "https://screenjson.com/schema.json",
+  "title": "ScreenJSON",
+  "description": "A data serialisation format for screenplays.",
+  "type": "object",
+  "additionalProperties": false,
+
+  "$defs": {
+    "uuid": {
+      "description": "RFC4122 UUID string (8-4-4-4-12).",
+      "type": "string",
+      "format": "uuid"
+    },
+
+    "slug": {
+      "description": "Lowercase sluggable identifier.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 50
+    },
+
+    "datetime": {
+      "description": "ISO 8601 date-time.",
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "lang": {
+      "description": "BCP 47 language tag (e.g. en, en-GB, fr-CA).",
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+      "default": "en"
+    },
+
+    "dir": {
+      "description": "Text direction.",
+      "type": "string",
+      "enum": ["ltr", "rtl"],
+      "default": "ltr"
+    },
+
+    "charset": {
+      "description": "IANA character set label (e.g. utf-8).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,31}$",
+      "default": "utf-8"
+    },
+
+    "meta": {
+      "description": "Arbitrary key/value metadata map.",
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z0-9_.:-]{1,64}$": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 2048
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+
+    "text": {
+      "description": "Translatable text keyed by language tag (e.g. {\"en\":\"Hello\",\"fr\":\"Salut\"}).",
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+
+    "name": {
+      "description": "Short name/title keyed by language tag.",
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+
+    "roles": {
+      "description": "Access-control roles/groups.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/slug" },
+      "uniqueItems": true,
+      "default": []
+    },
+
+    "tags": {
+      "description": "List of slugs.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/slug" },
+      "uniqueItems": true,
+      "default": []
+    },
+
+    "format": {
+      "description": "Reference to an external screenplay presentation standard for renderers (informational only).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "url": { "type": "string", "format": "uri" },
+        "note": { "type": "string", "minLength": 0, "maxLength": 1000 },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "title", "url"]
+    },
+
+    "color": {
+      "description": "A reusable UI color.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "title": { "$ref": "#/$defs/name" },
+        "rgb": {
+          "description": "RGB triplet (0-255).",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "hex": {
+          "description": "CSS hex color.",
+          "type": "string",
+          "pattern": "^#(?:[A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$"
+        },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "rgb", "hex"]
+    },
+
+    "author": {
+      "description": "An original writer of the content.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "given": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "family": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "given", "family"]
+    },
+
+    "contributor": {
+      "description": "Any third party who contributed artistically (editor, director, script doctor, etc.).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "given": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "family": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "roles": { "$ref": "#/$defs/roles" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "given", "family"]
+    },
+
+    "character": {
+      "description": "A character entity referenced by cues/dialogue and scene cast lists.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "slug": { "$ref": "#/$defs/slug" },
+        "name": {
+          "description": "Canonical display name (often uppercase in rendering).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "aliases": {
+          "description": "Alternate names/titles used in the script.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "uniqueItems": true,
+          "default": []
+        },
+        "desc": { "$ref": "#/$defs/text" },
+        "traits": {
+          "description": "Optional descriptive tags for search and filtering (non-canonical, editorial choice).",
+          "type": "array",
+          "items": { "$ref": "#/$defs/slug" },
+          "uniqueItems": true,
+          "default": []
+        },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "name"]
+    },
+
+    "revision": {
+      "description": "A revision event/marker.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "parent": { "$ref": "#/$defs/uuid" },
+        "index": { "type": "integer", "minimum": 0 },
+        "authors": {
+          "description": "Author IDs who created the revision.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" },
+          "minItems": 1
+        },
+        "label": {
+          "description": "Sluggable revision label (draft, blue, final, etc.).",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "minLength": 3,
+          "maxLength": 30
+        },
+        "created": { "$ref": "#/$defs/datetime" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "index", "authors", "label", "created"]
+    },
+
+    "note": {
+      "description": "An ancillary note attached to an object (typically an element).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "parent": { "$ref": "#/$defs/uuid" },
+        "highlight": {
+          "description": "Character index ranges (Unicode codepoints) within the rendered text: [[start,end], ...].",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0 },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "default": []
+        },
+        "contributor": { "$ref": "#/$defs/uuid" },
+        "created": { "$ref": "#/$defs/datetime" },
+        "text": { "$ref": "#/$defs/text" },
+        "color": { "$ref": "#/$defs/slug" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "created", "text"]
+    },
+
+    "source": {
+      "description": "A source work this screenplay is based on.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "type": { "$ref": "#/$defs/slug" },
+        "title": { "$ref": "#/$defs/text" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "type", "title"]
+    },
+
+    "registration": {
+      "description": "Registration information (e.g. WGA).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authority": { "type": "string", "minLength": 2, "maxLength": 50 },
+        "id": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "created": { "$ref": "#/$defs/datetime" },
+        "modified": { "$ref": "#/$defs/datetime" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["authority", "id"]
+    },
+
+    "encrypt": {
+      "description": "Encryption parameters (kept simple; tools may add extra metadata in meta).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cipher": { "type": "string", "default": "aes-256-ctr" },
+        "hash": { "type": "string", "default": "sha256" },
+        "encoding": {
+          "description": "Binary encoding used for encrypted output.",
+          "type": "string",
+          "enum": ["hex", "base16", "base32", "base64", "ascii85"],
+          "default": "hex"
+        },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["cipher", "hash", "encoding"]
+    },
+
+    "style": {
+      "description": "Reusable presentation style rule.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "default": { "type": "boolean", "default": false },
+        "text": { "type": "string", "minLength": 0, "maxLength": 5000 },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "default", "text"]
+    },
+
+    "template": {
+      "description": "Reusable presentation template rule.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "default": { "type": "boolean", "default": false },
+        "text": { "type": "string", "minLength": 0, "maxLength": 20000 },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "default", "text"]
+    },
+
+    "bookmark": {
+      "description": "A shortcut to a specific element within a scene (stable by ids).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "scene": { "$ref": "#/$defs/uuid" },
+        "element": { "$ref": "#/$defs/uuid" },
+        "title": { "$ref": "#/$defs/text" },
+        "desc": { "$ref": "#/$defs/text" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "scene", "element", "title"]
+    },
+
+    "slugline": {
+      "description": "Structured scene heading (slugline).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "no": {
+          "description": "Production scene number (optional).",
+          "type": "integer",
+          "minimum": 1
+        },
+        "context": {
+          "description": "INT/EXT style context.",
+          "type": "string",
+          "enum": ["I/E", "INT/EXT", "EXT/INT", "INT", "EXT", "POV"]
+        },
+        "setting": {
+          "description": "Location text.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "time": {
+          "description": "Time-of-day / continuity label. Common values are enumerated, but custom values are allowed.",
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40,
+          "anyOf": [
+            {
+              "enum": [
+                "DAY",
+                "NIGHT",
+                "DAWN",
+                "DUSK",
+                "LATER",
+                "MOMENTS LATER",
+                "CONTINUOUS",
+                "MORNING",
+                "AFTERNOON",
+                "EVENING",
+                "THE NEXT DAY"
+              ]
+            },
+            {
+              "pattern": "^[A-Z0-9][A-Z0-9 .’'/-]{1,39}$"
+            }
+          ]
+        },
+        "mods": {
+          "description": "Extra slugline modifiers (INTERCUT, FLASHBACK, ESTABLISHING, etc.).",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "uniqueItems": true,
+          "default": []
+        },
+        "desc": { "$ref": "#/$defs/text" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["context", "setting", "time"]
+    },
+
+    "element": {
+      "description": "Common fields for all elements within a scene body.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "scene": { "$ref": "#/$defs/uuid" },
+        "authors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" },
+          "minItems": 1
+        },
+        "contributors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" },
+          "default": []
+        },
+        "access": { "$ref": "#/$defs/roles" },
+        "notes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/note" },
+          "default": []
+        },
+        "charset": { "$ref": "#/$defs/charset" },
+        "dir": { "$ref": "#/$defs/dir" },
+        "class": { "$ref": "#/$defs/slug" },
+        "dom": { "type": "string", "minLength": 0, "maxLength": 100 },
+        "encrypt": { "$ref": "#/$defs/encrypt" },
+        "locked": { "type": "boolean", "default": false },
+        "omit": { "type": "boolean", "default": false },
+        "revisions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/revision" },
+          "default": []
+        },
+        "styles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/slug" },
+          "uniqueItems": true,
+          "default": []
+        },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "authors"]
+    },
+
+    "action": {
+      "allOf": [
+        { "$ref": "#/$defs/element" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "action" },
+            "text": { "$ref": "#/$defs/text" }
+          },
+          "required": ["type", "text"]
+        }
+      ]
+    },
+
+    "shot": {
+      "allOf": [
+        { "$ref": "#/$defs/element" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "shot" },
+            "text": { "$ref": "#/$defs/text" },
+            "fov": { "type": "number", "minimum": 0, "maximum": 360, "default": 40 },
+            "perspective": { "type": "string", "enum": ["2D", "3D"], "default": "2D" }
+          },
+          "required": ["type", "text"]
+        }
+      ]
+    },
+
+    "transition": {
+      "allOf": [
+        { "$ref": "#/$defs/element" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "transition" },
+            "text": { "$ref": "#/$defs/text" }
+          },
+          "required": ["type", "text"]
+        }
+      ]
+    },
+
+    "general": {
+      "allOf": [
+        { "$ref": "#/$defs/element" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "general" },
+            "text": { "$ref": "#/$defs/text" }
+          },
+          "required": ["type", "text"]
+        }
+      ]
+    },
+
+    "cue": {
+      "description": "Character cue element (e.g. JIM).",
+      "allOf": [
+        { "$ref": "#/$defs/element" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "character" },
+            "character": { "$ref": "#/$defs/uuid" },
+            "display": {
+              "description": "Optional explicit display override (e.g. JIM (V.O.)).",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "required": ["type", "character"]
+        }
+      ]
+    },
+
+    "parenthetical": {
+      "allOf": [
+        { "$ref": "#/$defs/element" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "parenthetical" },
+            "text": { "$ref": "#/$defs/text" }
+          },
+          "required": ["type", "text"]
+        }
+      ]
+    },
+
+    "dialogue": {
+      "description": "Dialogue text for a character.",
+      "allOf": [
+        { "$ref": "#/$defs/element" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "dialogue" },
+            "character": { "$ref": "#/$defs/uuid" },
+            "origin": {
+              "description": "Dialogue origin markers.",
+              "type": "string",
+              "enum": ["V.O", "V.O.", "O.S", "O.S.", "O.C", "O.C.", "FILTER"]
+            },
+            "dual": {
+              "description": "Whether the dialogue is dual-dialogue.",
+              "type": "boolean",
+              "default": false
+            },
+            "text": { "$ref": "#/$defs/text" }
+          },
+          "required": ["type", "character", "text"]
+        }
+      ]
+    },
+
+    "scene": {
+      "description": "A screenplay scene.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "authors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" },
+          "minItems": 1
+        },
+        "contributors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" },
+          "default": []
+        },
+        "heading": { "$ref": "#/$defs/slugline" },
+        "body": {
+          "description": "Ordered list of elements in the scene. Empty is allowed for outlining and drafting.",
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/action" },
+              { "$ref": "#/$defs/cue" },
+              { "$ref": "#/$defs/dialogue" },
+              { "$ref": "#/$defs/parenthetical" },
+              { "$ref": "#/$defs/general" },
+              { "$ref": "#/$defs/shot" },
+              { "$ref": "#/$defs/transition" }
+            ]
+          },
+          "default": []
+        },
+        "cast": {
+          "description": "Character ids present in the scene.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" },
+          "uniqueItems": true,
+          "default": []
+        },
+
+        "animals": { "$ref": "#/$defs/tags" },
+        "extra": { "$ref": "#/$defs/tags" },
+        "locations": { "$ref": "#/$defs/tags" },
+        "moods": { "$ref": "#/$defs/tags" },
+        "props": { "$ref": "#/$defs/tags" },
+        "sfx": { "$ref": "#/$defs/tags" },
+        "sounds": { "$ref": "#/$defs/tags" },
+        "tags": { "$ref": "#/$defs/tags" },
+        "vfx": { "$ref": "#/$defs/tags" },
+        "wardrobe": { "$ref": "#/$defs/tags" },
+
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "authors", "heading", "body"]
+    },
+
+    "ribbon": {
+      "description": "A repeating header or footer ribbon (optional).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cover": { "type": "boolean", "default": false },
+        "show": { "type": "boolean", "default": false },
+        "start": { "type": "integer", "minimum": 0, "default": 0 },
+        "omit": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "uniqueItems": true,
+          "default": []
+        },
+        "text": { "$ref": "#/$defs/text" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["cover", "show", "text"]
+    },
+
+    "status": {
+      "description": "Script revision status (optional).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "type": "string",
+          "enum": ["white", "blue", "pink", "yellow", "green", "goldenrod", "buff", "salmon", "cherry"]
+        },
+        "round": { "type": "integer", "minimum": 1, "default": 1 },
+        "updated": { "$ref": "#/$defs/datetime" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["color", "round", "updated"]
+    },
+
+    "license": {
+      "description": "License or copyright descriptor.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "ref": { "type": "string", "format": "uri" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id"]
+    },
+
+    "embedding": {
+      "description": "A derived numeric representation for semantic search. Optional and discardable.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "model": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "dimensions": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "values": { "type": "array", "items": { "type": "number" }, "minItems": 1, "maxItems": 4096 },
+        "source": { "type": "string", "enum": ["name", "text", "desc", "heading", "composite"] },
+        "lang": { "$ref": "#/$defs/lang" },
+        "tokens": { "type": "integer", "minimum": 1 },
+        "created": { "$ref": "#/$defs/datetime" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "model", "dimensions", "values", "source", "created"]
+    },
+
+    "passage": {
+      "description": "A derived passage of text used for retrieval. Optional and discardable.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "scene": { "$ref": "#/$defs/uuid" },
+        "elements": {
+          "description": "Element ids covered by this passage.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" },
+          "minItems": 1
+        },
+        "text": { "$ref": "#/$defs/text" },
+        "tokens": { "type": "integer", "minimum": 1 },
+        "overlap": { "type": "integer", "minimum": 0, "default": 0 },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "scene", "elements", "text", "tokens"]
+    },
+
+    "summary": {
+      "description": "A derived summary. Optional and discardable.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "scope": { "type": "string", "enum": ["document", "scene"] },
+        "target": { "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] },
+        "text": { "$ref": "#/$defs/text" },
+        "generated": { "type": "boolean", "default": false },
+        "model": { "type": "string", "maxLength": 100 },
+        "created": { "$ref": "#/$defs/datetime" },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["id", "scope", "text", "created"]
+    }
+  },
+
+  "properties": {
+    "id": { "$ref": "#/$defs/uuid" },
+
+    "version": {
+      "description": "ScreenJSON version for this file (semver).",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
+
+    "generator": {
+      "description": "Tool that generated this file.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["name", "version"]
+    },
+
+    "title": { "$ref": "#/$defs/name" },
+    "lang": { "$ref": "#/$defs/lang" },
+
+    "locale": {
+      "description": "BCP 47 locale tag (e.g. en-US).",
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+      "default": "en-US"
+    },
+
+    "charset": { "$ref": "#/$defs/charset" },
+    "dir": { "$ref": "#/$defs/dir" },
+
+    "authors": {
+      "description": "Author list for this file.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/author" },
+      "minItems": 1
+    },
+
+    "contributors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contributor" },
+      "default": []
+    },
+
+    "characters": {
+      "description": "All characters in the screenplay.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/character" },
+      "default": []
+    },
+
+    "colors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/color" },
+      "default": []
+    },
+
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/source" },
+      "default": []
+    },
+
+    "registrations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/registration" },
+      "default": []
+    },
+
+    "revisions": {
+      "description": "Global revision list (optional).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/revision" },
+      "default": []
+    },
+
+    "encrypt": {
+      "description": "Default encryption parameters for the file (optional).",
+      "anyOf": [{ "$ref": "#/$defs/encrypt" }, { "type": "null" }],
+      "default": null
+    },
+
+    "license": {
+      "anyOf": [{ "$ref": "#/$defs/license" }, { "type": "null" }],
+      "default": null
+    },
+
+    "taggable": {
+      "description": "Master index of all slugs used as tags (optional helper).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/slug" },
+      "uniqueItems": true,
+      "default": []
+    },
+
+    "genre": {
+      "description": "Genre tags for filtering.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/slug" },
+      "uniqueItems": true,
+      "default": []
+    },
+
+    "themes": {
+      "description": "Thematic tags for filtering.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/slug" },
+      "uniqueItems": true,
+      "default": []
+    },
+
+    "logline": {
+      "description": "One-sentence summary.",
+      "$ref": "#/$defs/text"
+    },
+
+    "document": {
+      "description": "The screenplay document container.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cover": {
+          "description": "Cover page metadata.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": { "$ref": "#/$defs/name" },
+            "authors": {
+              "description": "Author uuids shown on cover.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/uuid" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "sources": {
+              "description": "Source uuids shown on cover.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/uuid" },
+              "uniqueItems": true,
+              "default": []
+            },
+            "extra": { "$ref": "#/$defs/text" },
+            "meta": { "$ref": "#/$defs/meta" }
+          },
+          "required": ["title", "authors"]
+        },
+
+        "layout": {
+          "description": "Optional rendering rules for viewers.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "header": { "$ref": "#/$defs/ribbon" },
+            "footer": { "$ref": "#/$defs/ribbon" },
+            "status": { "$ref": "#/$defs/status" },
+            "styles": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/style" },
+              "default": []
+            },
+            "templates": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/template" },
+              "default": []
+            },
+            "guides": {
+              "description": "Helpful links for renderers to follow established screenplay presentation conventions (informational only).",
+              "type": "array",
+              "items": { "$ref": "#/$defs/format" },
+              "default": []
+            },
+            "meta": { "$ref": "#/$defs/meta" }
+          },
+          "default": { "styles": [], "templates": [] }
+        },
+
+        "bookmarks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bookmark" },
+          "default": []
+        },
+
+        "scenes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/scene" },
+          "minItems": 1
+        },
+
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "required": ["cover", "scenes"]
+    },
+
+    "analysis": {
+      "description": "Derived machine-readable representations. Optional and discardable.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "embeddings": {
+          "description": "Embeddings grouped by target id (keyed by uuid).",
+          "type": "object",
+          "patternProperties": {
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/embedding" },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "passages": {
+          "description": "Derived passages for retrieval.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/passage" },
+          "default": []
+        },
+        "summaries": {
+          "description": "Derived summaries.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/summary" },
+          "default": []
+        },
+        "settings": {
+          "description": "How derived data was produced.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "model": { "type": "string", "maxLength": 100 },
+            "size": { "type": "integer", "minimum": 1, "default": 512 },
+            "overlap": { "type": "integer", "minimum": 0, "default": 64 },
+            "tokeniser": { "type": "string", "maxLength": 50 },
+            "meta": { "$ref": "#/$defs/meta" }
+          }
+        },
+        "meta": { "$ref": "#/$defs/meta" }
+      },
+      "default": {}
+    }
+  },
+
+  "required": ["id", "version", "title", "lang", "charset", "dir", "authors", "document"]
+}
