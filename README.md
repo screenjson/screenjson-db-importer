@@ -1,6 +1,6 @@
 # screenjson-db-importer
 
-`screenjson-db-importer` imports ScreenJSON `.json` files into a database. First create the files with [`screenjson-cli`](https://github.com/screenjson/screenjson-cli), the separate open-source converter for PDF, Final Draft (FDX), Fountain, and other screenplay formats. This tool handles the database import step; it does not convert source screenplays.
+`screenjson-db-importer` imports ScreenJSON `.json` files into a database. Create those files first with a converter. [`screenjson-export`](https://github.com/screenjson/screenjson-export) is the free, open-source option for converting Final Draft (FDX), Fountain, and Fade In files to ScreenJSON. [`screenjson-cli`](https://github.com/screenjson/screenjson-cli) can also produce the same `.json` format and adds PDF conversion and other ScreenJSON operations. The importer handles database storage; it does not convert screenplay source files.
 
 The importer reads the complete ScreenJSON document and validates it against the ScreenJSON schema before writing. Its YAML configuration selects the database and blob storage services, connection details, and document layout. The YAML format and stored record format are compatible with the other ScreenJSON tools, while this repository builds and runs as an independent CLI.
 
@@ -87,4 +87,32 @@ Configuration values are resolved in this order: `--set path=value`, environment
 | `blob.secret_key` | `SCREENJSON_BLOB_SECRET_KEY` | empty | S3/MinIO secret key or Azure account key. |
 | `blob.root` | `SCREENJSON_BLOB_ROOT` | empty | Base directory for the filesystem blob driver. |
 
-`storage.layout` maps ScreenJSON document levels to database collections and is how you shape storage for your application. The importer does not require your application to adopt a particular database schema beyond the ScreenJSON record envelope; collection names and layout can be configured in YAML. Records that do not contain embeddings remain valid records. Vector databases store a zero vector with metadata marking it as non-native.
+## Storage layouts
+
+`storage.layout` decides which parts of a ScreenJSON document become separate database records and which remain nested inside their parent record. It is a storage mapping, not a transformation of the imported `.json`: when the tool reads records back, it assembles the same ScreenJSON document structure. Each record carries the common ScreenJSON storage envelope (document ID, parent, kind, ordering and revision metadata) plus that part of the document. Choose a preset for a common arrangement, or provide a complete mapping with your own collection names.
+
+The presets use these collection names and split points:
+
+| Layout | Separate records | Data that stays nested | Typical use |
+|---|---|---|---|
+| `whole` | One root screenplay record in `screenplays`. | Scenes, their elements, characters, and analysis all stay in that record. | Simplest layout when records are small and loading a screenplay as a whole is convenient. Chroma, Weaviate, and Pinecone reject this layout unless `storage.allow_large_records: true`; one vector for an entire screenplay is usually not useful. |
+| `scenes` | A root record in `screenplays`, each scene in `scenes`, and analysis in `analysis` when present. | Each scene's elements remain inside the scene record; characters remain in the root record. | Separates scenes for per-scene access or embeddings while keeping their contents together. |
+| `elements` (default) | Root in `screenplays`; scenes in `scenes`; every scene element in `elements`; characters in `characters`; analysis in `analysis` when present. | Only levels not split by the layout stay nested. | Fine-grained records for querying and updating individual elements, with independent scene, element, or character vectors when configured. |
+
+A custom layout is a YAML map from level to collection settings. The `root` level is required. Any level omitted from the map stays embedded in its parent: without `scenes`, the document's scenes stay in the root record; without `elements`, scene elements stay in their scene; without `characters`, characters stay in the root; without `analysis`, analysis stays in the root record. To split `elements`, you must also split `scenes` so each element has a separate scene parent.
+
+```yaml
+storage:
+  layout:
+    root:       {collection: screenplays}
+    scenes:     {collection: script_scenes, vector: {model: text-embedding-3-small, dimensions: 1536}}
+    elements:   {collection: script_parts}
+    characters: {collection: cast}
+    analysis:   {collection: script_analysis}
+```
+
+Use a distinct collection name for each included level. Names must start with a letter and contain at most 63 letters, digits, or underscores; names are treated as case-insensitive when checking for collisions. `root` and `analysis` cannot declare vectors. Only `scenes`, `elements`, and `characters` can declare a native vector, with a model name and dimensions from 1 through 4096. The database index must support the requested vector dimensions.
+
+A vector declaration does not create embeddings. When the imported ScreenJSON already has an embedding under `analysis.embeddings` for a scene, element, or character, the importer checks the first embedding for that level's configured model. If its values match the declared dimensions, it stores those values in the database's native vector field and keeps the embedding metadata and position in the record envelope so the original ScreenJSON can be reconstructed. Other embeddings remain in the analysis data. A vector record without a matching native embedding is still imported; vector databases use a zero vector marked as non-native so the original ScreenJSON data remains intact.
+
+A layout is part of the database record format: use the same layout settings when importing documents into the same database. Collection names and split points are configurable, so applications can choose a layout that fits their query patterns without changing the source JSON document.
