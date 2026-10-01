@@ -1,40 +1,37 @@
 # screenjson-db-importer
 
-Standalone, open source CLI for importing converted ScreenJSON `.json` files
-directly into a configured database. Its Go module has no dependency on the
-private `screenjson-server` module. It contains its own copy of the required
-configuration, schema validation, document manager, layouts, blob clients,
-state protection, and database drivers. These copies intentionally keep the
-same YAML contract and persisted record format as the server, while allowing
-the CLI to be built, released, and used independently.
+`screenjson-db-importer` loads ScreenJSON `.json` files into a database. Create
+those files first with [`screenjson-cli`](https://github.com/screenjson/screenjson-cli),
+the open-source tool that converts screenplays from PDF or Final Draft (FDX)
+into ScreenJSON. This importer does not convert PDFs or FDX files itself.
 
-Build from this repository:
+This is a standalone open-source command-line tool. Build it from this
+repository:
 
 ```sh
 go build -o screenjson-db-importer .
 ```
 
-Stop `screenjson-server` before direct import. The importer uses the same state
-lock and lease checks and refuses to run while the server is active.
+Configure the database and source storage in a YAML file, then import a file,
+directory, glob, or configured `file://`, `s3://`, or `azure://` URI:
 
 ```sh
-./screenjson-db-importer --config server.yaml --workers 8 \
+./screenjson-db-importer --config importer.yaml --workers 8 \
   --manifest import-state.jsonl --retry-failed ./converted/
 ```
 
-The source may be one JSON file, a directory, glob, or configured `file://`,
-`s3://`, or `azure://` URI. DigitalOcean Spaces uses the S3-compatible blob
-configuration. Preflight validates every source with the copied ScreenJSON
-validator and document manager before writes; processing rereads each source
-and checks its SHA-256. The synced JSONL manifest resumes successful sources
-and records per-file errors. Duplicate IDs use server behavior: identical
-content succeeds idempotently, and different content is a conflict. Exit
-status is nonzero when any file fails.
+Preflight validates each source against the ScreenJSON schema before writing.
+The importer rereads sources during processing and checks their SHA-256 hashes.
+The JSONL manifest records each file's result and lets you resume successful
+imports. Identical document IDs and content are treated as already imported;
+the same ID with different content is an error. The process exits nonzero if
+any file fails. Concurrent imports are refused while another ScreenJSON writer
+holds the database state lock.
 
-Supported storage drivers and their settings are documented in
-[`docs/CONFIG.md`](docs/CONFIG.md). Pinecone uses an existing dense serverless
-index: `storage.url` is the index host, `storage.pinecone.api_key` is its API
-key, and `storage.pinecone.namespace` is an optional namespace prefix. Each
-configured collection gets its own Pinecone namespace. ScreenJSON records
-without embeddings receive zero vectors with a metadata flag so normal reads
-and writes retain the original record shape.
+Supported database and blob storage drivers, their YAML settings, and complete
+error behavior are documented in [`docs/CONFIG.md`](docs/CONFIG.md).
+Pinecone uses an existing dense serverless index: `storage.url` is the index
+host, `storage.pinecone.api_key` is its API key, and
+`storage.pinecone.namespace` is an optional namespace prefix. Each configured
+collection gets its own Pinecone namespace. Records without embeddings receive
+zero vectors with a metadata flag, preserving their ScreenJSON record data.
